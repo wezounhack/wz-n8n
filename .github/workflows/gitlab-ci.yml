@@ -9,7 +9,7 @@ variables:
   DOCKER_REPO: wezoun/n8n
   DEPLOY_USER: deploy
 
-# 1. Construction de l’image Docker
+# 1. Construction de l’image
 build:
   stage: build
   image: docker:latest
@@ -22,7 +22,7 @@ build:
   only:
     - main
 
-# 2. Test rapide de l’image
+# 2. Test de l’image
 test:
   stage: test
   image: docker:latest
@@ -46,7 +46,7 @@ test:
   only:
     - main
 
-# 3. Pousser l’image Docker sur Docker Hub
+# 3. Pousser l’image
 push:
   stage: push
   image: docker:latest
@@ -58,7 +58,7 @@ push:
   only:
     - main
 
-# 4. Préparer le VPS (installation Docker, création user, scripts)
+# 4. Préparer le VPS (installation Docker, création user, scripts) -- via SSH
 prepare_vps:
   stage: prepare_vps
   image: alpine:latest
@@ -67,62 +67,20 @@ prepare_vps:
   script:
     - |
       echo "=== Préparer le VPS avec mot de passe ==="
-
-      # Remplacer par tes secrets dans GitLab
-      # VPS_ADMIN_IP: IP sans points, exemple : 192-168-1-100
+      # Définir les variables dans GitLab
+      # VPS_ADMIN_IP (sans point, par ex 192-168-1-100)
       # VPS_ADMIN_USER
       # VPS_SSH_PASSWORD
-      # DEPLOY_USER (ex: deploy)
-
+      # DEPLOY_USER
+      
       # Convertir l'adresse IP
       VPS_IP=$(echo "$VPS_ADMIN_IP" | tr '-' '.')
 
-      # Se connecter en SSH avec sshpass
       sshpass -p "$VPS_SSH_PASSWORD" ssh -o StrictHostKeyChecking=no "$VPS_ADMIN_USER@$VPS_IP" bash -s -- <<EOF
-
         set -e
 
         # Installer Docker si absent
         if ! command -v docker > /dev/null; then
           apk add --no-cache curl bash
           curl -fsSL https://get.docker.com | sh
-          addgroup docker
-          adduser -D $DEPLOY_USER
-          adduser $DEPLOY_USER docker
-        fi
-
-        # Créer le répertoire deploy
-        mkdir -p /home/$DEPLOY_USER
-        chown -R $DEPLOY_USER:$DEPLOY_USER /home/$DEPLOY_USER
-
-        # Écrire le script deploy_n8n.sh
-        cat > /home/$DEPLOY_USER/deploy_n8n.sh << 'EOL'
-#!/bin/bash
-set -euo pipefail
-
-IMAGE="${1:-votre-dockerhub-username/n8n:latest}"
-CONTAINER_NAME="n8n"
-DATA_DIR="/home/$USER/.n8n"
-
-mkdir -p "$DATA_DIR"
-
-echo "Déploiement de l'image $IMAGE..."
-
-if docker ps -a --format '{{.Names}}' | grep -q "^$CONTAINER_NAME$"; then
-  CURRENT_IMAGE=$(docker inspect --format='{{.Config.Image}}' "$CONTAINER_NAME" || true)
-  echo "$CURRENT_IMAGE" > "/home/$USER/.n8n_last_tag" || true
-fi
-
-docker pull "$IMAGE"
-
-docker stop "$CONTAINER_NAME" || true
-docker rm "$CONTAINER_NAME" || true
-
-docker run -d \
-  --name "$CONTAINER_NAME" \
-  --restart unless-stopped \
-  --env-file "/home/$USER/n8n.env" \
-  -v "$DATA_DIR:/home/node/.n8n" \
-  -p 5678:5678 \
-  --health-cmd='curl -fsS http://localhost:5678/ || exit 1' \
-  --health-
+          addgroup
