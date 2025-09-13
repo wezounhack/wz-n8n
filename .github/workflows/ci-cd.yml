@@ -9,6 +9,7 @@ variables:
   DOCKER_REPO: wezoun/n8n
   DEPLOY_USER: deploy
 
+# 1. Construction de l’image Docker
 build:
   stage: build
   image: docker:latest
@@ -21,6 +22,7 @@ build:
   only:
     - main
 
+# 2. Test rapide de l’image
 test:
   stage: test
   image: docker:latest
@@ -31,11 +33,11 @@ test:
     - sleep 10
     - |
       if curl -fsS http://localhost:5678; then
-        echo "Test OK"
+        echo "Test réussi"
         docker stop test_n8n
         docker rm test_n8n
       else
-        echo "Test KO"
+        echo "Test échoué"
         docker logs test_n8n || true
         docker stop test_n8n || true
         docker rm test_n8n
@@ -44,6 +46,7 @@ test:
   only:
     - main
 
+# 3. Pousser l’image Docker sur Docker Hub
 push:
   stage: push
   image: docker:latest
@@ -55,6 +58,7 @@ push:
   only:
     - main
 
+# 4. Préparer le VPS (installation Docker, création user, scripts)
 prepare_vps:
   stage: prepare_vps
   image: alpine:latest
@@ -62,16 +66,23 @@ prepare_vps:
     - apk add --no-cache bash openssh sshpass
   script:
     - |
-      echo "=== Connexion au VPS via mot de passe et préparation ==="
+      echo "=== Préparer le VPS avec mot de passe ==="
 
-      # Variables à définir dans CI/CD secrets
-      # VPS_ADMIN_IP, VPS_ADMIN_USER, VPS_SSH_PASSWORD, DEPLOY_USER
+      # Remplacer par tes secrets dans GitLab
+      # VPS_ADMIN_IP: IP sans points, exemple : 192-168-1-100
+      # VPS_ADMIN_USER
+      # VPS_SSH_PASSWORD
+      # DEPLOY_USER (ex: deploy)
 
-      # Créer le user deploy si inexistant et ajouter au groupe docker
-      sshpass -p "$VPS_SSH_PASSWORD" ssh -o StrictHostKeyChecking=no $VPS_ADMIN_USER@$VPS_ADMIN_IP <<EOF
+      # Convertir l'adresse IP
+      VPS_IP=$(echo "$VPS_ADMIN_IP" | tr '-' '.')
+
+      # Se connecter en SSH avec sshpass
+      sshpass -p "$VPS_SSH_PASSWORD" ssh -o StrictHostKeyChecking=no "$VPS_ADMIN_USER@$VPS_IP" bash -s -- <<EOF
+
         set -e
 
-        # Installer Docker si nécessaire
+        # Installer Docker si absent
         if ! command -v docker > /dev/null; then
           apk add --no-cache curl bash
           curl -fsSL https://get.docker.com | sh
@@ -80,37 +91,18 @@ prepare_vps:
           adduser $DEPLOY_USER docker
         fi
 
-        # Créer le répertoire deploy et ajuster ownership
+        # Créer le répertoire deploy
         mkdir -p /home/$DEPLOY_USER
         chown -R $DEPLOY_USER:$DEPLOY_USER /home/$DEPLOY_USER
 
-        # Écrire le fichier n8n.env dans le home de deploy
-      #  cat > /home/$DEPLOY_USER/n8n.env <<EOL
-# N8N_HOST=${N8N_HOST}
-# N8N_PORT=${N8N_PORT}
-# N8N_PROTOCOL=${N8N_PROTOCOL}
-# N8N_BASIC_AUTH_ACTIVE=${N8N_BASIC_AUTH_ACTIVE}
-# N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER}
-# N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD}
-# N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
-# DB_TYPE=${DB_TYPE}
-# DB_POSTGRESDB_HOST=${DB_POSTGRESDB_HOST}
-# DB_POSTGRESDB_DATABASE=${DB_POSTGRESDB_DATABASE}
-# DB_POSTGRESDB_USER=${DB_POSTGRESDB_USER}
-# DB_POSTGRESDB_PASSWORD=${DB_POSTGRESDB_PASSWORD}
-# EOL
-       #  chown $DEPLOY_USER:$DEPLOY_USER /home/$DEPLOY_USER/n8n.env
-       # chmod 600 /home/$DEPLOY_USER/n8n.env
-
         # Écrire le script deploy_n8n.sh
-        cat > /home/$DEPLOY_USER/deploy_n8n.sh <<'EOL'
+        cat > /home/$DEPLOY_USER/deploy_n8n.sh << 'EOL'
 #!/bin/bash
 set -euo pipefail
 
 IMAGE="${1:-votre-dockerhub-username/n8n:latest}"
 CONTAINER_NAME="n8n"
 DATA_DIR="/home/$USER/.n8n"
-ENV_FILE="/home/$USER/n8n.env"
 
 mkdir -p "$DATA_DIR"
 
@@ -118,4 +110,19 @@ echo "Déploiement de l'image $IMAGE..."
 
 if docker ps -a --format '{{.Names}}' | grep -q "^$CONTAINER_NAME$"; then
   CURRENT_IMAGE=$(docker inspect --format='{{.Config.Image}}' "$CONTAINER_NAME" || true)
-  echo "$CURRENT_IMAGE" > "/home/$USER/.n8n_last
+  echo "$CURRENT_IMAGE" > "/home/$USER/.n8n_last_tag" || true
+fi
+
+docker pull "$IMAGE"
+
+docker stop "$CONTAINER_NAME" || true
+docker rm "$CONTAINER_NAME" || true
+
+docker run -d \
+  --name "$CONTAINER_NAME" \
+  --restart unless-stopped \
+  --env-file "/home/$USER/n8n.env" \
+  -v "$DATA_DIR:/home/node/.n8n" \
+  -p 5678:5678 \
+  --health-cmd='curl -fsS http://localhost:5678/ || exit 1' \
+  --health-
