@@ -39,7 +39,7 @@ jobs:
     steps:
       - name: Test Docker image
         run: |
-          docker run -d --name test_n8n -p 5678:5678 wezjob/n8n:latest
+          docker run -d --name test_n8n -p 5678:5678 wezoun/n8n:latest
           sleep 10
           if curl -fsS http://localhost:5678; then
             echo "Test réussi"
