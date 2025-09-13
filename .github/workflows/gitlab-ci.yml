@@ -59,7 +59,7 @@ jobs:
           script: |
             set -e
             # Rendre le script exécutable
-            chmod +x /home/${{ secrets.VPS_ADMIN_USER }}/deploy_n8n.sh
+            chmod +x /home/${{ secrets.VPS_ADMIN_USER }}/scripts/deploy_n8n.sh
             # Exécuter le script de déploiement
             /home/${{ secrets.VPS_ADMIN_USER }}/deploy_n8n.sh wezoun/n8n:latest
           debug: true
