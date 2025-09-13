@@ -1,86 +1,107 @@
-stages:
-  - build
-  - test
-  - push
-  - prepare_vps
-  - deploy
+name: CI/CD n8n - Build, Test, Push, Deploy
 
-variables:
-  DOCKER_REPO: wezoun/n8n
-  DEPLOY_USER: deploy
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:  # Permet de lancer manuellement aussi
 
-# 1. Construction de l’image
-build:
-  stage: build
-  image: docker:latest
-  services:
-    - docker:dind
-  script:
-    - docker info
-    - docker build -t $DOCKER_REPO:latest .
-    - docker tag $DOCKER_REPO:latest $DOCKER_REPO:${CI_COMMIT_SHORT_SHA}
-  only:
-    - main
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-# 2. Test de l’image
-test:
-  stage: test
-  image: docker:latest
-  services:
-    - docker:dind
-  script:
-    - docker run -d --name test_n8n -p 5678:5678 $DOCKER_REPO:latest
-    - sleep 10
-    - |
-      if curl -fsS http://localhost:5678; then
-        echo "Test réussi"
-        docker stop test_n8n
-        docker rm test_n8n
-      else
-        echo "Test échoué"
-        docker logs test_n8n || true
-        docker stop test_n8n || true
-        docker rm test_n8n
-        exit 1
-      fi
-  only:
-    - main
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v2
 
-# 3. Pousser l’image
-push:
-  stage: push
-  image: docker:latest
-  services:
-    - docker:dind
-  script:
-    - docker push $DOCKER_REPO:latest
-    - docker push $DOCKER_REPO:${CI_COMMIT_SHORT_SHA}
-  only:
-    - main
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v2
 
-# 4. Préparer le VPS (installation Docker, création user, scripts) -- via SSH
-prepare_vps:
-  stage: prepare_vps
-  image: alpine:latest
-  before_script:
-    - apk add --no-cache bash openssh sshpass
-  script:
-    - |
-      echo "=== Préparer le VPS avec mot de passe ==="
-      # Définir les variables dans GitLab
-      # VPS_ADMIN_IP (sans point, par ex 192-168-1-100)
-      # VPS_ADMIN_USER
-      # VPS_SSH_PASSWORD
-      # DEPLOY_USER
-      
-      # Convertir l'adresse IP
-      VPS_IP=$(echo "$VPS_ADMIN_IP" | tr '-' '.')
+      - name: Login to DockerHub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-      sshpass -p "$VPS_SSH_PASSWORD" ssh -o StrictHostKeyChecking=no "$VPS_ADMIN_USER@$VPS_IP" bash -s -- <<EOF
-        set -e
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/n8n:latest
+            ${{ secrets.DOCKER_USERNAME }}/n8n:${{ github.sha }}
 
-        # Installer Docker si absent
-        if ! command -v docker > /dev/null; then
-          apk add --no-cache curl bash
-          curl -fsSL https://get.docker.com | sh
-          addgroup
+      - name: Test Docker image
+        run: |
+          docker run -d --name test_n8n -p 5678:5678 ${{ secrets.DOCKER_USERNAME }}/n8n:latest
+          sleep 10
+          if curl -fsS http://localhost:5678; then
+            echo "n8n répond correctement"
+            docker stop test_n8n
+            docker rm test_n8n
+          else
+            echo "Échec du test"
+            docker logs test_n8n || true
+            docker stop test_n8n || true
+            docker rm test_n8n
+            exit 1
+          fi
+
+      - name: Préparer le VPS (installer Docker, créer user, scripts)
+        uses: appleboy/ssh-action@v0.1.4
+        with:
+          host: ${{ secrets.VPS_ADMIN_IP }}  # IP ou DNS du VPS
+          username: ${{ secrets.VPS_ADMIN_USER }}
+          password: ${{ secrets.VPS_SSH_PASSWORD }}  # Mot de passe SSH
+          port: 22
+          script: |
+            # Convertir l'adresse IP si nécessaire
+            # Si ton IP dans secrets est sous la forme 192-168-1-100, alors
+            # VPS_IP=$(echo "$VPS_ADMIN_IP" | tr '-' '.')
+            # Sinon, tu peux fixer directement dans secrets
+
+            set -e
+            # Installer Docker si absent
+            if ! command -v docker > /dev/null; then
+              apk add --no-cache curl bash
+              curl -fsSL https://get.docker.com | sh
+              addgroup docker
+              adduser -D ${{ secrets.DEPLOY_USER }}
+              adduser ${{ secrets.DEPLOY_USER }} docker
+            fi
+
+            # Créer le répertoire deploy
+            sudo -u ${{ secrets.DEPLOY_USER }} mkdir -p /home/${{ secrets.DEPLOY_USER }}
+            sudo -u ${{ secrets.DEPLOY_USER }} chown -R ${{ secrets.DEPLOY_USER }} /home/${{ secrets.DEPLOY_USER }}
+
+            # Transférer et exécuter le script deploy (de ton repo)
+            # \n peut poser problème, mieux transférer en upload ou en ligne
+            # Tu peux stocker ton script en tant que fichier dans ton repo
+            # et l'exécuter via ssh
+
+            # Ici l'exécution directe du script (supposons que ton script est dans le repo)
+            # Avec un fichier dans ton repo, tu peux le transférer puis l'exécuter
+            # Exemple d'utilisation du contenu du script (en ligne)
+            # (Si besoin, tu peux utiliser scp pour transférer le script et l'exécuter)
+
+            # Pour la simplicité, voici le contenu du script déployé dans le repo
+
+            # ...ici tu peux ajouter la commande pour transférer puis exécuter le script...
+
+            # Exemple si le script est dans ton repo et que tu veux l'exécuter
+            # (tu dois au préalable le transférer en utilisant, par exemple, scp dans une étape)
+            # ou utiliser directement la commande echo + bash -s -- <<EOF
+
+            # A adapter selon ton besoin
+
+        # Attention : ceci nécessite que le script `deploy_n8n.sh` soit accessible dans ton repo
+
+      #Enfin, le déploiement
+      - name: Déployer le container
+        uses: appleboy/ssh-action@v0.1.4
+        with:
+          host: ${{ secrets.VPS_ADMIN_IP }}
+          username: ${{ secrets.VPS_ADMIN_USER }}
