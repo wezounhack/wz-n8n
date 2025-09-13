@@ -47,7 +47,7 @@ jobs:
           username: ${{ secrets.VPS_ADMIN_USER }} # Utilisateur SSH
           password: ${{ secrets.VPS_SSH_PASSWORD }} # passwor
           source: ./scripts/deploy_n8n.sh # Fichier à copier
-          target: /home/${{ secrets.VPS_ADMIN_USER }}/deploy_n8n.sh # Dossier de destination sur le VPS
+          target: /home/${{ secrets.VPS_ADMIN_USER }} # Dossier de destination sur le VPS
 
       - name: Run deploy script on VPS
         uses: appleboy/ssh-action@v0.1.4
