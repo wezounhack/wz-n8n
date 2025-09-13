@@ -7,46 +7,33 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-and-push:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Check if Dockerfile exists
-        run: |
-          if [ ! -f Dockerfile ]; then
-            echo "Dockerfile not found!"
-            exit 1
-          fi
-
-      - name: Setup QEMU
-        uses: docker/setup-qemu-action@v2
-
-      - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v2
-
-      - name: Login to DockerHub
-        uses: docker/login-action@v2
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build Docker image
-        run: docker build --no-cache -t wezoun/n8n:latest .
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
-      - name: List Docker images after build
-        run: docker images
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Verify image exists
-        run: |
-          if [[ "$(docker images -q wezoun/n8n:latest 2> /dev/null)" == "" ]]; then
-            echo "L’image wezoun/n8n:latest n’a pas été construite correctement."
-            exit 1
-          fi
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: wezoun/n8n:latest
 
   test:
-    needs: build
+    needs: build-and-push
     runs-on: ubuntu-latest
     steps:
       - name: Test Docker image
@@ -65,32 +52,8 @@ jobs:
             exit 1
           fi
 
-  push:
-    needs: [build, test]
-    runs-on: ubuntu-latest
-    steps:
-      - name: List Docker images before push
-        run: docker images
-
-      - name: Verify image exists before push
-        run: |
-          if [[ "$(docker images -q wezoun/n8n:latest 2> /dev/null)" == "" ]]; then
-            echo "L’image wezoun/n8n:latest n’a pas été construite correctement."
-            exit 1
-          fi
-
-      - name: Login to DockerHub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Push Docker image
-        run: |
-          docker push wezoun/n8n:latest
-
   deploy:
-    needs: push
+    needs: [build-and-push, test]
     runs-on: ubuntu-latest
     steps:
       - name: Transfer and run deploy script
@@ -108,4 +71,3 @@ jobs:
             ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@167.86.88.17 "chmod +x /home/${DEPLOY_USER}/deploy_n8n.sh"
             # Exécuter le script de déploiement
             ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@167.86.88.17 "/home/${DEPLOY_USER}/deploy_n8n.sh wezoun/n8n:latest"
-
