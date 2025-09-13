@@ -26,15 +26,15 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build Docker image
-        run: docker build --no-cache -t wezoun/n8n:latest .
+        run: docker build --no-cache -t ***/n8n:latest .
 
       - name: List Docker images after build
         run: docker images
 
       - name: Verify image exists
         run: |
-          if [[ "$(docker images -q wezoun/n8n:latest 2> /dev/null)" == "" ]]; then
-            echo "L’image wezoun/n8n:latest n’a pas été construite correctement."
+          if [[ "$(docker images -q ***/n8n:latest 2> /dev/null)" == "" ]]; then
+            echo "L’image ***/n8n:latest n’a pas été construite correctement."
             exit 1
           fi
 
@@ -44,7 +44,7 @@ jobs:
     steps:
       - name: Test Docker image
         run: |
-          docker run -d --name test_n8n -p 5678:5678 wezoun/n8n:latest
+          docker run -d --name test_n8n -p 5678:5678 ***/n8n:latest
           sleep 10
           if curl -fsS http://localhost:5678; then
             echo "Test réussi"
@@ -67,8 +67,8 @@ jobs:
 
       - name: Verify image exists before push
         run: |
-          if [[ "$(docker images -q wezoun/n8n:latest 2> /dev/null)" == "" ]]; then
-            echo "L’image wezoun/n8n:latest n’a pas été construite correctement."
+          if [[ "$(docker images -q ***/n8n:latest 2> /dev/null)" == "" ]]; then
+            echo "L’image ***/n8n:latest n’a pas été construite correctement."
             exit 1
           fi
 
@@ -80,7 +80,7 @@ jobs:
 
       - name: Push Docker image
         run: |
-          docker push wezoun/n8n:latest
+          docker push ***/n8n:latest
 
   deploy:
     needs: push
@@ -97,4 +97,4 @@ jobs:
             set -e
             scp -o StrictHostKeyChecking=no deploy_n8n.sh ${DEPLOY_USER}@167.86.88.17:/home/${DEPLOY_USER}/deploy_n8n.sh
             ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@167.86.88.17 "chmod +x /home/${DEPLOY_USER}/deploy_n8n.sh"
-            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@167.86.88.17 "/home/${DEPLOY_USER}/deploy_n8n.sh wezoun/n8n:latest"
+            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@167.86.88.17 "/home/${DEPLOY_USER}/deploy_n8n.sh ***/n8n:latest"
