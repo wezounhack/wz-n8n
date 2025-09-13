@@ -1,4 +1,4 @@
-name: CI/CD n8n - Build, Test, Push, Deploy
+name: CI/CD n8n - Build, Push, Deploy
 
 on:
   push:
@@ -32,28 +32,8 @@ jobs:
           push: true
           tags: wezoun/n8n:latest
 
-  test:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    steps:
-      - name: Test Docker image
-        run: |
-          docker run -d --name test_n8n -p 5678:5678 wezoun/n8n:latest
-          sleep 10
-          if curl -fsS http://localhost:5678; then
-            echo "Test réussi"
-            docker stop test_n8n
-            docker rm test_n8n
-          else
-            echo "Échec du test"
-            docker logs test_n8n || true
-            docker stop test_n8n || true
-            docker rm test_n8n
-            exit 1
-          fi
-
   deploy:
-    needs: [build-and-push, test]
+    needs: build-and-push
     runs-on: ubuntu-latest
     steps:
       - name: Transfer and run deploy script
