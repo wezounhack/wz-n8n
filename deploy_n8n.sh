@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-IMAGE="${1:-wezjob/n8n:latest}"
+IMAGE="${1:-wezoun/n8n:latest}"
 CONTAINER_NAME="n8n"
 DATA_DIR="/home/${{ secrets.DEPLOY_USER }}/.n8n"
 
