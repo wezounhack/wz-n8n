@@ -26,12 +26,8 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build Docker image
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: false  # on va pousser après
-          tags: |
-            wezoun/n8n:latest
+        run: |
+          docker build -t wezoun/n8n:latest .
 
   test:
     needs: build
@@ -62,7 +58,7 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-      - name: Push Docker images
+      - name: Push Docker image
         run: |
           docker push wezoun/n8n:latest
 
@@ -73,14 +69,13 @@ jobs:
       - name: Transfer and run deploy script
         uses: appleboy/ssh-action@v0.1.4
         with:
-          host: 167.86.88.17  # ton IP en dur
+          host: 167.86.88.17 # IP en dur
           username: ${{ secrets.VPS_ADMIN_USER }}
           password: ${{ secrets.VPS_SSH_PASSWORD }}
           port: 22
           script: |
             set -e
-
             # Transférer le script de déploiement
             scp -o StrictHostKeyChecking=no deploy_n8n.sh ${DEPLOY_USER}@167.86.88.17:/home/${DEPLOY_USER}/deploy_n8n.sh
             ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@167.86.88.17 "chmod +x /home/${DEPLOY_USER}/deploy_n8n.sh"
-            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@167.86.88.17 "/home/${DEPLOY_USER}/deploy_n8n.sh wezjob/n8n:latest"
+            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@167.86.88.17 "/home/${DEPLOY_USER}/deploy_n8n.sh wezoun/n8n:latest"
