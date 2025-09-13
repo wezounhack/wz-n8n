@@ -7,7 +7,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  # 1. Pousser l'image officielle ou personnalisée
   build:
     runs-on: ubuntu-latest
     steps:
@@ -26,21 +25,21 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # Si tu veux utiliser l’image officielle sans build, saute cette étape
-      - name: (Optionnel) Build personnalisé de l’image
-        run: |
-          docker pull n8nio/n8n:latest
-          # Si tu veux faire une build custom, décommente ci-dessous
-          # docker build -t ton-utilisateur/n8n:latest .
+      - name: Build Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: false  # on va pousser après
+          tags: |
+            wezjob/n8n:latest
 
-  # 2. Tester l’image
   test:
     needs: build
     runs-on: ubuntu-latest
     steps:
       - name: Test Docker image
         run: |
-          docker run -d --name test_n8n -p 5678:5678 n8nio/n8n:latest
+          docker run -d --name test_n8n -p 5678:5678 wezjob/n8n:latest
           sleep 10
           if curl -fsS http://localhost:5678; then
             echo "Test réussi"
@@ -54,9 +53,8 @@ jobs:
             exit 1
           fi
 
-  # 3. Pousser l’image (si build personnalisé)
   push:
-    needs: test
+    needs: [build, test]
     runs-on: ubuntu-latest
     steps:
       - name: Login DockerHub
@@ -64,13 +62,10 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-      - name: Push images
+      - name: Push Docker images
         run: |
-          docker push n8nio/n8n:latest
-          # Si build personnalisé, pousser aussi ton image
-          # docker push ton-utilisateur/n8n:latest
+          docker push wezjob/n8n:latest
 
-  # 4. Déploiement sur ton VPS
   deploy:
     needs: push
     runs-on: ubuntu-latest
@@ -78,25 +73,14 @@ jobs:
       - name: Transfer and run deploy script
         uses: appleboy/ssh-action@v0.1.4
         with:
-          host: 167.86.88.17 # Adresse IP du VPS en dur
+          host: 167.86.88.17  # ton IP en dur
           username: ${{ secrets.VPS_ADMIN_USER }}
           password: ${{ secrets.VPS_SSH_PASSWORD }}
           port: 22
           script: |
             set -e
 
-            # Installer Docker si nécessaire
-            if ! command -v docker > /dev/null; then
-              apk add --no-cache curl bash
-              curl -fsSL https://get.docker.com | sh
-              addgroup docker
-              adduser -D ${DEPLOY_USER}
-              adduser ${DEPLOY_USER} docker
-            fi
-
-            # Vérifier et copier le script de déploiement
+            # Transférer le script de déploiement
             scp -o StrictHostKeyChecking=no deploy_n8n.sh ${DEPLOY_USER}@167.86.88.17:/home/${DEPLOY_USER}/deploy_n8n.sh
             ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@167.86.88.17 "chmod +x /home/${DEPLOY_USER}/deploy_n8n.sh"
-
-            # Exécuter le script pour déployer la nouvelle image
-            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@167.86.88.17 "/home/${DEPLOY_USER}/deploy_n8n.sh n8nio/n8n:latest"
+            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@167.86.88.17 "/home/${DEPLOY_USER}/deploy_n8n.sh wezjob/n8n:latest"
