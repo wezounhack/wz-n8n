@@ -1,4 +1,4 @@
-name: CI/CD n8n - Build, Test, Push, Prepare et Deploy
+name: CI/CD n8n - Build, Test, Push, Deploy
 
 on:
   push:
@@ -7,10 +7,11 @@ on:
   workflow_dispatch:
 
 jobs:
+  # 1. Pousser l'image officielle ou personnalisée
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout repo
         uses: actions/checkout@v3
 
       - name: Setup QEMU
@@ -25,22 +26,21 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build Docker image
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ secrets.DOCKER_USERNAME }}/n8n:latest
-            ${{ secrets.DOCKER_USERNAME }}/n8n:${{ github.sha }}
+      # Si tu veux utiliser l’image officielle sans build, saute cette étape
+      - name: (Optionnel) Build personnalisé de l’image
+        run: |
+          docker pull n8nio/n8n:latest
+          # Si tu veux faire une build custom, décommente ci-dessous
+          # docker build -t ton-utilisateur/n8n:latest .
 
+  # 2. Tester l’image
   test:
     needs: build
     runs-on: ubuntu-latest
     steps:
       - name: Test Docker image
         run: |
-          docker run -d --name test_n8n -p 5678:5678 ${{ secrets.DOCKER_USERNAME }}/n8n:latest
+          docker run -d --name test_n8n -p 5678:5678 n8nio/n8n:latest
           sleep 10
           if curl -fsS http://localhost:5678; then
             echo "Test réussi"
@@ -54,48 +54,49 @@ jobs:
             exit 1
           fi
 
+  # 3. Pousser l’image (si build personnalisé)
   push:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - name: Push Docker image
+      - name: Login DockerHub
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
       - name: Push images
         run: |
-          docker push ${{ secrets.DOCKER_USERNAME }}/n8n:latest
-          docker push ${{ secrets.DOCKER_USERNAME }}/n8n:${{ github.sha }}
+          docker push n8nio/n8n:latest
+          # Si build personnalisé, pousser aussi ton image
+          # docker push ton-utilisateur/n8n:latest
 
-  prepare_vps:
+  # 4. Déploiement sur ton VPS
+  deploy:
     needs: push
     runs-on: ubuntu-latest
     steps:
-      - name: Prepare VPS
+      - name: Transfer and run deploy script
         uses: appleboy/ssh-action@v0.1.4
         with:
-          host: 167.86.88.17  # Adresse IP en dur
+          host: 167.86.88.17 # Adresse IP du VPS en dur
           username: ${{ secrets.VPS_ADMIN_USER }}
           password: ${{ secrets.VPS_SSH_PASSWORD }}
           port: 22
           script: |
             set -e
 
-            # Installer Docker si absent
+            # Installer Docker si nécessaire
             if ! command -v docker > /dev/null; then
               apk add --no-cache curl bash
               curl -fsSL https://get.docker.com | sh
               addgroup docker
-              adduser -D ${{ secrets.DEPLOY_USER }}
-              adduser ${{ secrets.DEPLOY_USER }} docker
+              adduser -D ${DEPLOY_USER}
+              adduser ${DEPLOY_USER} docker
             fi
 
-            # Créer le répertoire deploy
-            mkdir -p /home/${{ secrets.DEPLOY_USER }}
-            chown -R ${{ secrets.DEPLOY_USER }} /home/${{ secrets.DEPLOY_USER }}
+            # Vérifier et copier le script de déploiement
+            scp -o StrictHostKeyChecking=no deploy_n8n.sh ${DEPLOY_USER}@167.86.88.17:/home/${DEPLOY_USER}/deploy_n8n.sh
+            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@167.86.88.17 "chmod +x /home/${DEPLOY_USER}/deploy_n8n.sh"
 
-            # Transférer et exécuter le script de déploiement
-            scp -o StrictHostKeyChecking=no deploy_n8n.sh ${{ secrets.VPS_ADMIN_USER }}@167.86.88.17:/home/${{ secrets.DEPLOY_USER }}/deploy_n8n.sh
-            ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_ADMIN_USER }}@167.86.88.17 "chmod +x /home/${{ secrets.DEPLOY_USER }}/deploy_n8n.sh"
-            ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_ADMIN_USER }}@167.86.88.17 "/home/${{ secrets.DEPLOY_USER }}/deploy_n8n.sh ${{ secrets.DOCKER_USERNAME }}/n8n:latest"
+            # Exécuter le script pour déployer la nouvelle image
+            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@167.86.88.17 "/home/${DEPLOY_USER}/deploy_n8n.sh n8nio/n8n:latest"
