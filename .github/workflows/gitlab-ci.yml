@@ -27,7 +27,17 @@ jobs:
 
       - name: Build Docker image
         run: |
-          docker build -t wezoun/n8n:latest .
+          docker build --no-cache -t wezoun/n8n:latest .
+
+      - name: List Docker images
+        run: docker images
+
+      - name: Verify built image
+        run: |
+          if [[ "$(docker images -q wezoun/n8n:latest 2> /dev/null)" == "" ]]; then
+            echo "Image not found, exiting..."
+            exit 1
+          fi
 
   test:
     needs: build
