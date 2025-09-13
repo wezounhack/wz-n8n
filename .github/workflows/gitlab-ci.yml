@@ -54,7 +54,7 @@ jobs:
         with:
           host: ${{ secrets.VPS_HOST }} # Adresse IP ou nom d'hôte du VPS
           username: ${{ secrets.VPS_ADMIN_USER }} # Utilisateur SSH
-          key: ${{ secrets.VPS_SSH_KEY }} # Clé SSH privée
+          password: ${{ secrets.VPS_SSH_PASSWORD }} # passwor
           port: ${{ secrets.VPS_SSH_PORT }} # Port SSH
           script: |
             set -e
