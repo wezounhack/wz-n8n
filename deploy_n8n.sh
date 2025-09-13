@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-IMAGE="${1:-votre-dockerhub-username/n8n:latest}"
+IMAGE="${1:-wezoun/n8n:latest}"
 CONTAINER_NAME="n8n"
 DATA_DIR="/home/${USER}/.n8n"
 ENV_FILE="/home/${USER}/n8n.env"
