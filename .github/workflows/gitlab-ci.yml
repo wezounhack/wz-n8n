@@ -31,7 +31,7 @@ jobs:
           context: .
           push: false  # on va pousser après
           tags: |
-            wezjob/n8n:latest
+            wezoun/n8n:latest
 
   test:
     needs: build
