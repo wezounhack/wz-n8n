@@ -64,7 +64,7 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
       - name: Push Docker images
         run: |
-          docker push wezjob/n8n:latest
+          docker push wezoun/n8n:latest
 
   deploy:
     needs: push
